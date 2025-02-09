@@ -2,6 +2,7 @@ import io
 import logging
 import os
 from abc import ABC
+import re
 from tempfile import NamedTemporaryFile
 from typing import Type, TypeVar
 
@@ -156,6 +157,19 @@ class _AvailableSassEntry(_SassEntry):
             os.chmod(temp_file.name, 0o666 & ~umask)
 
         source_path = os.path.join(self._dirname, self._filename)
+        # Read the SCSS source from the entry file
+        with io.open(source_path, 'r', encoding='utf-8') as f:
+            scss_source = f.read()
+
+        # --- Preprocess: Replace math functions ---
+        # Replace math.round( with round(
+        scss_source = re.sub(r'math\.round\(', 'round(', scss_source)
+        # Replace math.div(expr1, expr2) with (expr1 / expr2)
+        scss_source = re.sub(
+            r'math\.div\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)',
+            r'(\1 / \2)',
+            scss_source
+        )
 
         output_dir = os.path.join(site_dir, dest_dir)
         os.makedirs(output_dir, exist_ok=True)
@@ -174,8 +188,9 @@ class _AvailableSassEntry(_SassEntry):
             _, filename = os.path.split(css_file.name)
             source_map_filename = filename + '.map'
 
+            # Compile from the processed SCSS source string rather than the file
             css, source_map = sass.compile(
-                filename=source_path,
+                string=scss_source,
                 output_style='compressed',
                 source_map_filename=source_map_filename,
                 source_map_contents=True,
