@@ -143,18 +143,25 @@ class _AvailableSassEntry(_SassEntry):
             scss_source = f.read()
 
         #
-        # 1) Replace the newer "math.*" calls with classic equivalents
+        # 1) Shim math.* calls
         #
+        # => Replace "math.round(" with "round("
         scss_source = re.sub(r"math\.round\(", "round(", scss_source)
+        # => Replace "math.div(x, y)" with "(x / y)"
         scss_source = re.sub(
             r"math\.div\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)",
             r"(\1 / \2)",
-            scss_source,
+            scss_source
+        )
+        # => Replace "math.unit(x)" with "unit(x)"
+        scss_source = re.sub(
+            r"math\.unit\(\s*([^)]+?)\s*\)",
+            r"unit(\1)",
+            scss_source
         )
 
         #
-        # 2) Replace the newer "color.channel($color, 'hue', $space: hsl)" etc.
-        #    with old "hue($color)", "saturation($color)", "lightness($color)"
+        # 2) Shim color.channel($color, 'hue'/...) calls to older hue(), saturation(), lightness()
         #
         # Hue
         scss_source = re.sub(
@@ -178,10 +185,12 @@ class _AvailableSassEntry(_SassEntry):
             flags=re.IGNORECASE
         )
 
+        #
+        # 3) Write the updated SCSS to a temporary .scss file
+        #
         output_dir = os.path.join(site_dir, dest_dir)
         os.makedirs(output_dir, exist_ok=True)
 
-        # 3) Write the updated SCSS to a temporary .scss file
         with NamedTemporaryFile(
             prefix="temp-sass-",
             suffix=".scss",
@@ -194,7 +203,9 @@ class _AvailableSassEntry(_SassEntry):
             tmp_scss.write(scss_source)
             tmp_scss_path = tmp_scss.name
 
+        #
         # 4) Create a NamedTemporaryFile for final CSS
+        #
         with NamedTemporaryFile(
             prefix="extra-style.",
             suffix=".min.css",
