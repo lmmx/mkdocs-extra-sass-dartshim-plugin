@@ -1,8 +1,8 @@
 import io
 import logging
 import os
-from abc import ABC
 import re
+from abc import ABC
 from tempfile import NamedTemporaryFile
 from typing import Type, TypeVar
 
@@ -14,10 +14,8 @@ from mkdocs.plugins import BasePlugin
 from mkdocs.structure.pages import Page
 from mkdocs.utils import normalize_url
 
-_T_SassEntry = TypeVar('_T', bound='_SassEntry')
-
-
-_logger = logging.getLogger('mkdocs.extra-sass')
+_T_SassEntry = TypeVar("_T", bound="_SassEntry")
+_logger = logging.getLogger("mkdocs.extra-sass")
 
 
 class ExtraSassPlugin(BasePlugin):
@@ -33,30 +31,20 @@ class ExtraSassPlugin(BasePlugin):
         self._entry_point(config).on_serve(server, builder)
         return server
 
-    def on_post_page(
-        self, output_content: str, page: Page, config: Config
-    ) -> str:
+    def on_post_page(self, output_content: str, page: Page, config: Config) -> str:
         relative_path = self._entry_point(config).relative_path
         if not relative_path:
             return output_content
 
-        # injection
-
         href = normalize_url(relative_path, page=page)
+        soup = BeautifulSoup(output_content, "html.parser")
 
-        soup = BeautifulSoup(output_content, 'html.parser')
-
-        stylesheet = soup.new_tag('link')
-        stylesheet.attrs['href'] = href
-        stylesheet.attrs['rel'] = 'stylesheet'
-
+        stylesheet = soup.new_tag("link")
+        stylesheet.attrs["href"] = href
+        stylesheet.attrs["rel"] = "stylesheet"
         soup.head.append(stylesheet)
 
-        _logger.debug(
-            "[SASS] add on Page: %s, entry_point: %s" %
-            (page.url, stylesheet))
-        _logger.debug(str(soup.head))
-
+        _logger.debug("[SASS] add on Page: %s, entry_point: %s", page.url, stylesheet)
         return str(soup)
 
     # ------------------------------
@@ -73,14 +61,11 @@ class ExtraSassPlugin(BasePlugin):
                 site_dir = config["site_dir"]
                 dest_dir = os.path.join("assets", "stylesheets")
                 info = entry_point.save_to(site_dir, dest_dir)
-                _logger.info(
-                    '[SASS] Build CSS "%s" from "%s"' % (
-                        info['dst'], info['src']))
+                _logger.info('[SASS] Build CSS "%s" from "%s"', info["dst"], info["src"])
             except Exception as ex:
-                _logger.exception('[SASS] Failed to build CSS: %s', ex)
-                if config['strict']:
+                _logger.exception("[SASS] Failed to build CSS: %s", ex)
+                if config["strict"]:
                     raise ex
-
         return entry_point
 
 
@@ -88,13 +73,13 @@ class ExtraSassPlugin(BasePlugin):
 #
 #
 
-
 class _SassEntry(ABC):
-
-    _styles_dir = 'extra_sass'
+    _styles_dir = "extra_sass"
     _style_filenames = [
-        'style.css.sass', 'style.sass',
-        'style.css.scss', 'style.scss',
+        "style.css.sass",
+        "style.sass",
+        "style.css.scss",
+        "style.scss",
     ]
 
     @classmethod
@@ -119,7 +104,7 @@ class _SassEntry(ABC):
         pass
 
     def save_to(self, site_dir: str, dest_dir: str) -> dict:
-        raise AssertionError('DO NOT CALL HERE')
+        raise AssertionError("DO NOT CALL HERE")
 
 
 class _NoSassEntry(_SassEntry):
@@ -127,11 +112,9 @@ class _NoSassEntry(_SassEntry):
 
 
 class _AvailableSassEntry(_SassEntry):
-
     def __init__(self, dirname: str, filename: str):
         self._dirname = dirname
         self._filename = filename
-
         self._relative_path = None
 
     @property
@@ -140,7 +123,7 @@ class _AvailableSassEntry(_SassEntry):
 
     @property
     def relative_path(self) -> str:
-        """ Compiled CSS file: relative path from `SITE_DIR` """
+        """Compiled CSS file: relative path from `SITE_DIR`"""
         return self._relative_path
 
     def on_serve(self, server: Server, builder) -> None:
@@ -149,64 +132,100 @@ class _AvailableSassEntry(_SassEntry):
             server.watch(self._dirname, builder)
 
     def save_to(self, site_dir: str, dest_dir: str) -> dict:
-
         def fix_umask(temp_file):
-            # see: https://stackoverflow.com/questions/10541760/can-i-set-the-umask-for-tempfile-namedtemporaryfile-in-python  # noqa: E501
+            # see: https://stackoverflow.com/questions/10541760/can-i-set-the-umask-for-tempfile-namedtemporaryfile-in-python
             umask = os.umask(0o666)
             os.umask(umask)
             os.chmod(temp_file.name, 0o666 & ~umask)
 
         source_path = os.path.join(self._dirname, self._filename)
-        # Read the SCSS source from the entry file
-        with io.open(source_path, 'r', encoding='utf-8') as f:
+        with io.open(source_path, "r", encoding="utf-8") as f:
             scss_source = f.read()
 
-        # --- Preprocess: Replace math functions ---
-        # Replace math.round( with round(
-        scss_source = re.sub(r'math\.round\(', 'round(', scss_source)
-        # Replace math.div(expr1, expr2) with (expr1 / expr2)
+        #
+        # 1) Replace the newer "math.*" calls with classic equivalents
+        #
+        scss_source = re.sub(r"math\.round\(", "round(", scss_source)
         scss_source = re.sub(
-            r'math\.div\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)',
-            r'(\1 / \2)',
-            scss_source
+            r"math\.div\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)",
+            r"(\1 / \2)",
+            scss_source,
+        )
+
+        #
+        # 2) Replace the newer "color.channel($color, 'hue', $space: hsl)" etc.
+        #    with old "hue($color)", "saturation($color)", "lightness($color)"
+        #
+        # Hue
+        scss_source = re.sub(
+            r"color\.channel\s*\(\s*([^\)]+),\s*['\"]hue['\"].*?\)",
+            r"hue(\1)",
+            scss_source,
+            flags=re.IGNORECASE
+        )
+        # Saturation
+        scss_source = re.sub(
+            r"color\.channel\s*\(\s*([^\)]+),\s*['\"]saturation['\"].*?\)",
+            r"saturation(\1)",
+            scss_source,
+            flags=re.IGNORECASE
+        )
+        # Lightness
+        scss_source = re.sub(
+            r"color\.channel\s*\(\s*([^\)]+),\s*['\"]lightness['\"].*?\)",
+            r"lightness(\1)",
+            scss_source,
+            flags=re.IGNORECASE
         )
 
         output_dir = os.path.join(site_dir, dest_dir)
         os.makedirs(output_dir, exist_ok=True)
 
+        # 3) Write the updated SCSS to a temporary .scss file
         with NamedTemporaryFile(
-            prefix='extra-style.',
-            suffix='.min.css',
+            prefix="temp-sass-",
+            suffix=".scss",
             dir=output_dir,
             delete=False,
-            mode='w',
-            encoding='utf-8',
-            newline=''
+            mode="w",
+            encoding="utf-8",
+            newline="",
+        ) as tmp_scss:
+            tmp_scss.write(scss_source)
+            tmp_scss_path = tmp_scss.name
+
+        # 4) Create a NamedTemporaryFile for final CSS
+        with NamedTemporaryFile(
+            prefix="extra-style.",
+            suffix=".min.css",
+            dir=output_dir,
+            delete=False,
+            mode="w",
+            encoding="utf-8",
+            newline="",
         ) as css_file:
             fix_umask(css_file)
 
             _, filename = os.path.split(css_file.name)
-            source_map_filename = filename + '.map'
+            source_map_filename = filename + ".map"
 
-            # Compile from the processed SCSS source string rather than the file
+            # 5) Compile from the temporary SCSS file
             css, source_map = sass.compile(
-                string=scss_source,
-                output_style='compressed',
+                filename=tmp_scss_path,
+                output_style="compressed",
                 source_map_filename=source_map_filename,
                 source_map_contents=True,
                 omit_source_map_url=False,
-                output_filename_hint=filename
+                output_filename_hint=filename,
             )
 
             css_file.write(css)
 
+            # 6) Write out the sourcemap
             map_file = os.path.join(output_dir, source_map_filename)
-            with io.open(map_file, 'w', encoding='utf-8', newline='') as f:
+            with io.open(map_file, "w", encoding="utf-8", newline="") as f:
                 f.write(source_map)
 
             self._relative_path = os.path.join(dest_dir, filename)
 
-            return {
-                'src': source_path,
-                'dst': self._relative_path
-            }
+            return {"src": source_path, "dst": self._relative_path}
