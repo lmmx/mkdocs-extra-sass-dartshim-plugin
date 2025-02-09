@@ -5,7 +5,15 @@
 
 ---
 
-This plugin adds stylesheets to your MkDocs site from `Sass`/`SCSS` and includes shims for math functions—such as `math.round()` and `math.div()`—so you can use modern module syntax while using non‑Dart Sass (i.e. LibSass).
+This plugin adds stylesheets to your MkDocs site from `Sass`/`SCSS` and includes shims for:
+
+- math functions—such as `math.round()` and `math.div()`
+- colour functions
+- svg-load functions
+
+so you can use modern module syntax while using non‑Dart Sass (i.e. LibSass).
+
+See example use in [`page-dewarp` docs](https://github.com/lmmx/page-dewarp) for reference (`.scss` files).
 
 ## Features
 
